@@ -1,4 +1,5 @@
 import os
+import traceback
 import uuid
 from dotenv import load_dotenv
 from pinecone import Pinecone, ServerlessSpec
@@ -57,42 +58,50 @@ def flatten_requirements(data: dict) -> list[str]:
     recurse(data)
     return flattened
 
-
 def vectorize_and_store(doc_id: str, software: str, body: dict) -> dict:
     """
     Vectorizes system requirements and stores them in Pinecone.
     """
-    texts = flatten_requirements(body)
-    if not texts:
-        raise ValueError("Empty or invalid content — nothing to vectorize.")
+    try:
+        print(f"\n--- Vectorizing: {software} (ID: {doc_id}) ---")
 
-    # Generate embeddings
-    # ✅ NEW (correct usage with HuggingFaceEmbeddings)
-    embeddings = model.embed_documents(texts)
+        print("Step 1: Flattening requirements")
+        texts = flatten_requirements(body)
+        print("Flattened texts:", texts)
 
-    print("Vectorizing data!!")
+        if not texts:
+            raise ValueError("Empty or invalid content — nothing to vectorize.")
 
-    # Prepare metadata for Pinecone
-    vectors = [
-        {
-            "id": str(uuid.uuid4()),
-            "values": vector,
-            "metadata": {
-                "software": software.lower(),
-                "source_id": doc_id,
-                "text": text
+        print("Step 2: Generating embeddings")
+        embeddings = model.embed_documents(texts)
+        print(f"Generated {len(embeddings)} embeddings.")
+
+        print("Step 3: Preparing vectors for Pinecone")
+        vectors = [
+            {
+                "id": str(uuid.uuid4()),
+                "values": vector,
+                "metadata": {
+                    "software": software.lower(),
+                    "source_id": doc_id,
+                    "text": text
+                }
             }
+            for vector, text in zip(embeddings, texts)
+        ]
+
+        print("Step 4: Upserting to Pinecone...")
+        index.upsert(vectors=vectors)
+        print("✅ Successfully upserted to Pinecone!")
+
+        return {
+            "vectors_stored": len(vectors),
+            "software": software,
+            "source_id": doc_id
         }
-        for vector, text in zip(embeddings, texts)
-    ]
 
-    # Upsert to Pinecone
-    index.upsert(vectors=vectors)
+    except Exception as e:
+        print("❌ Error during vectorization process:")
+        traceback.print_exc()
+        raise e
 
-    print("Upserted data in pinecone!!")
-
-    return {
-        "vectors_stored": len(vectors),
-        "software": software,
-        "source_id": doc_id
-    }
