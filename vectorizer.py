@@ -31,18 +31,23 @@ index = pc.Index(INDEX_NAME)
 
 # Correct configuration
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-embedding_model = genai.EmbeddingModel(model_name="models/embedding-001")
+# embedding_model = genai.EmbeddingModel(model_name="models/embedding-001")
 
 def get_gemini_embeddings(texts: list[str]) -> list[list[float]]:
     embeddings = []
     for text in texts:
         try:
-            result = embedding_model.embed(content=text)
+            result = genai.embed_content(
+                model="models/embedding-001",
+                content=text,
+                task_type="retrieval_document"
+            )
             embeddings.append(result["embedding"])
         except Exception as e:
             print(f"❌ Failed to embed: {text[:30]}... — {str(e)}")
-            embeddings.append([0.0] * 768)  # fallback, will be filtered later
+            embeddings.append([0.0] * 768)  # fallback
     return embeddings
+
 
 # Flatten nested requirements
 def flatten_requirements(data: dict) -> list[str]:
