@@ -14,9 +14,6 @@ PINECONE_REGION = os.getenv("PINECONE_REGION", "us-east-1")
 INDEX_NAME = os.getenv("PINECONE_INDEX", "bytex-vectors")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
-# Configure Gemini API
-genai.configure(api_key=GOOGLE_API_KEY)
-embedding_model = genai.GenerativeModel(model_name="embedding-001")
 
 # Pinecone setup
 pc = Pinecone(api_key=PINECONE_API_KEY)
@@ -32,19 +29,19 @@ if INDEX_NAME not in pc.list_indexes().names():
 
 index = pc.Index(INDEX_NAME)
 
-# Function to get Gemini embeddings
+# Correct configuration
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+embedding_model = genai.EmbeddingModel(model_name="models/embedding-001")
+
 def get_gemini_embeddings(texts: list[str]) -> list[list[float]]:
     embeddings = []
     for text in texts:
         try:
-            result = embedding_model.embed_content(
-                content=text,
-                task_type="retrieval_document"
-            )
-            embeddings.append(result['embedding'])
+            result = embedding_model.embed(content=text)
+            embeddings.append(result["embedding"])
         except Exception as e:
             print(f"❌ Failed to embed: {text[:30]}... — {str(e)}")
-            embeddings.append([0.0] * 768)  # Dummy vector on failure
+            embeddings.append([0.0] * 768)  # fallback, will be filtered later
     return embeddings
 
 # Flatten nested requirements
