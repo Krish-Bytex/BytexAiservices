@@ -4,3 +4,4 @@ python-dotenv
 pinecone
 langchain_huggingface
 google-generativeai
+torch

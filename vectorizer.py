@@ -12,19 +12,17 @@ PINECONE_CLOUD = os.getenv("PINECONE_CLOUD", "aws")
 PINECONE_REGION = os.getenv("PINECONE_REGION", "us-east-1")
 INDEX_NAME = os.getenv("PINECONE_INDEX", "bytex-vectors")
 
-# Initialize Pinecone
+# Init Pinecone
 pc = Pinecone(api_key=PINECONE_API_KEY)
-
-# Create index if needed
 if INDEX_NAME not in pc.list_indexes().names():
     pc.create_index(
         name=INDEX_NAME,
-        dimension=384,  # new model output dimension
+        dimension=384,
         metric="cosine",
         spec=ServerlessSpec(cloud=PINECONE_CLOUD, region=PINECONE_REGION)
     )
-
 index = pc.Index(INDEX_NAME)
+
 
 def flatten_requirements(data: dict) -> list[str]:
     flattened = []
@@ -42,38 +40,47 @@ def flatten_requirements(data: dict) -> list[str]:
     recurse(data)
     return flattened
 
+
+# ⚠️ Load embedding model *only inside the function*
 def vectorize_and_store(doc_id: str, software: str, body: dict) -> dict:
     try:
-        print(f"\n--- Vectorizing: {software} (ID: {doc_id}) ---")
-        
-        from langchain_huggingface import HuggingFaceEmbeddings
-        model = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-MiniLM-L3-v2")
+        print(f"Vectorizing: {software} (ID: {doc_id})")
+
+        from transformers import AutoTokenizer, AutoModel
+        import torch
+
+        model_name = "sentence-transformers/paraphrase-MiniLM-L3-v2"
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        model = AutoModel.from_pretrained(model_name)
+
+        def embed(texts: list[str]) -> list[list[float]]:
+            inputs = tokenizer(texts, padding=True, truncation=True, return_tensors="pt")
+            with torch.no_grad():
+                model_output = model(**inputs)
+            embeddings = model_output.last_hidden_state.mean(dim=1)
+            return embeddings.cpu().tolist()
 
         texts = flatten_requirements(body)
-        print("Flattened texts:", texts)
-
         if not texts:
-            raise ValueError("Empty or invalid content — nothing to vectorize.")
+            raise ValueError("Nothing to vectorize")
 
-        embeddings = model.embed_documents(texts)
-        print(f"Generated {len(embeddings)} embeddings.")
-
-        vectors = [
-            {
-                "id": str(uuid.uuid4()),
-                "values": vector,
-                "metadata": {
-                    "software": software.lower(),
-                    "source_id": doc_id,
-                    "text": text
-                }
-            }
-            for vector, text in zip(embeddings, texts)
-        ]
+        vectors = []
+        for chunk_start in range(0, len(texts), 10):  # process in chunks
+            chunk = texts[chunk_start:chunk_start + 10]
+            chunk_embeddings = embed(chunk)
+            vectors.extend([
+                {
+                    "id": str(uuid.uuid4()),
+                    "values": vec,
+                    "metadata": {
+                        "software": software.lower(),
+                        "source_id": doc_id,
+                        "text": text
+                    }
+                } for vec, text in zip(chunk_embeddings, chunk)
+            ])
 
         index.upsert(vectors=vectors)
-        print("✅ Successfully upserted to Pinecone!")
-
         return {
             "vectors_stored": len(vectors),
             "software": software,
@@ -81,9 +88,10 @@ def vectorize_and_store(doc_id: str, software: str, body: dict) -> dict:
         }
 
     except Exception as e:
-        print("❌ Error during vectorization process:")
+        print("❌ Error during vectorization:")
         traceback.print_exc()
         raise e
+
 
 
 
