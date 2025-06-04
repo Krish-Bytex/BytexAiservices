@@ -3,8 +3,8 @@ import traceback
 import uuid
 from dotenv import load_dotenv
 from pinecone import Pinecone, ServerlessSpec
-from sentence_transformers import SentenceTransformer
-from langchain_huggingface import HuggingFaceEmbeddings
+# from sentence_transformers import SentenceTransformer
+# from langchain_huggingface import HuggingFaceEmbeddings
 
 # Load environment variables
 load_dotenv()
@@ -35,8 +35,7 @@ if INDEX_NAME not in pc.list_indexes().names():
 # Load index
 index = pc.Index(INDEX_NAME)
 
-# Load HuggingFaceEmbeddings model
-model = HuggingFaceEmbeddings()
+
 
 
 def flatten_requirements(data: dict) -> list[str]:
@@ -64,6 +63,9 @@ def vectorize_and_store(doc_id: str, software: str, body: dict) -> dict:
     """
     try:
         print(f"\n--- Vectorizing: {software} (ID: {doc_id}) ---")
+
+        from langchain_huggingface import HuggingFaceEmbeddings  # moved inside
+        model = HuggingFaceEmbeddings()  # moved inside
 
         print("Step 1: Flattening requirements")
         texts = flatten_requirements(body)
